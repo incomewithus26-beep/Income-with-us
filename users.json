@@ -1,0 +1,72 @@
+import json, os, time
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+
+TOKEN = os.getenv("8899030467:AAEJSTTmwl3dALeWYFh72_ayZxM5QMqrK_Q")
+
+DB = "users.json"
+
+def load():
+    if not os.path.exists(DB):
+        return {}
+    return json.load(open(DB))
+
+def save(data):
+    json.dump(data, open(DB, "w"))
+
+users = load()
+
+def user(uid):
+    uid = str(uid)
+    if uid not in users:
+        users[uid] = {"balance":0,"bonus":0,"ref":0}
+        save(users)
+    return users[uid]
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    u = user(update.effective_user.id)
+    kb = [
+        [InlineKeyboardButton("💰 Balance", callback_data="bal")],
+        [InlineKeyboardButton("🎁 Bonus", callback_data="bonus")],
+        [InlineKeyboardButton("👥 Invite", callback_data="invite")],
+        [InlineKeyboardButton("💳 Withdraw", callback_data="wd")]
+    ]
+    await update.message.reply_text(
+        "👋 Welcome to Income With Us",
+        reply_markup=InlineKeyboardMarkup(kb)
+    )
+
+async def click(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    d = q.data
+    u = user(q.from_user.id)
+
+    if d == "bal":
+        await q.edit_message_text(f"💰 Balance: {u['balance']} BDT")
+
+    elif d == "bonus":
+        now = int(time.time())
+        if now - u["bonus"] > 86400:
+            u["bonus"] = now
+            u["balance"] += 5
+            save(users)
+            await q.edit_message_text("✅ 5 BDT Bonus Added!")
+        else:
+            await q.edit_message_text("⏳ Bonus already claimed today.")
+
+    elif d == "invite":
+        me = (await context.bot.get_me()).username
+        link = f"https://t.me/{me}?start={q.from_user.id}"
+        await q.edit_message_text(f"👥 Invite Link:\n{link}")
+
+    elif d == "wd":
+        if u["balance"] >= 100:
+            await q.edit_message_text("💳 Send your payment number.")
+        else:
+            await q.edit_message_text("❌ Minimum withdraw 100 BDT.")
+
+app = Application.builder().token(TOKEN).build()
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CallbackQueryHandler(click))
+app.run_polling()
